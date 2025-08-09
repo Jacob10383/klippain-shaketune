@@ -84,9 +84,12 @@ def create_vibrations_profile(gcmd, config, st_process: ShakeTuneProcess) -> Non
     toolhead.move([mid_x - 15, mid_y - 15, z_height, E], feedrate_travel)
     toolhead.dwell(0.5)
 
-    creator = st_process.get_graph_creator()
-    filename = creator.get_folder() / f'{creator.get_type().replace(" ", "")}_{date}'
-    measurements_manager = MeasurementsManager(st_process.get_st_config().chunk_size, printer.get_reactor(), filename)
+    # Export-only CSV output path
+    output_folder = st_process.get_st_config().get_results_folder('vibrations profile')
+    filename = output_folder / f'vibrations_{date}'
+    measurements_manager = MeasurementsManager(
+        st_process.get_st_config().chunk_size, printer.get_reactor(), filename, mode='csv'
+    )
 
     nb_speed_samples = int((max_speed - MIN_SPEED) / speed_increment + 1)
     for curr_angle in main_angles:
@@ -153,11 +156,8 @@ def create_vibrations_profile(gcmd, config, st_process: ShakeTuneProcess) -> Non
         gcode.run_script_from_command(f'SET_VELOCITY_LIMIT ACCEL={old_accel} SQUARE_CORNER_VELOCITY={old_sqv}')
     toolhead.wait_moves()
 
-    # Run post-processing
-    ConsoleOutput.print('Machine vibrations profile generation...')
-    ConsoleOutput.print('This may take some time (5-8min)')
-    creator.configure(motors_config_parser.kinematics, accel, motors_config_parser)
-    creator.define_output_target(filename)
-    measurements_manager.save_stdata()
-    st_process.run(filename)
-    st_process.wait_for_completion()
+    # Save raw data as CSV files for off-device processing
+    ConsoleOutput.print('Saving raw measurements to CSV files for off-device processing...')
+    saved = measurements_manager.save_csvs()
+    for p in saved:
+        ConsoleOutput.print(f'- {p}')

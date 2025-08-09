@@ -10,7 +10,7 @@
 from datetime import datetime
 
 from ..helpers.accelerometer import Accelerometer, MeasurementsManager
-from ..helpers.common_func import AXIS_CONFIG
+from ..helpers.constants import AXIS_CONFIG
 from ..helpers.compat import res_tester_config
 from ..helpers.console_output import ConsoleOutput
 from ..helpers.resonance_test import vibrate_axis_at_static_freq
@@ -47,10 +47,11 @@ def excitate_axis_at_freq(gcmd, config, st_process: ShakeTuneProcess) -> None:
             raise gcmd.error(f'Accelerometer chip [{accel_chip}] was not found!')
         accelerometer = Accelerometer(k_accelerometer, printer.get_reactor())
 
-        creator = st_process.get_graph_creator()
-        filename = creator.get_folder() / f'{creator.get_type().replace(" ", "")}_{date}'
+        # Export-only CSV output path
+        output_folder = st_process.get_st_config().get_results_folder('static frequency')
+        filename = output_folder / f'staticfreq_{date}'
         measurements_manager = MeasurementsManager(
-            st_process.get_st_config().chunk_size, printer.get_reactor(), filename
+            st_process.get_st_config().chunk_size, printer.get_reactor(), filename, mode='csv'
         )
 
     ConsoleOutput.print(f'Excitating {axis.upper()} axis at {freq:.1f}Hz for {duration} seconds')
@@ -108,13 +109,11 @@ def excitate_axis_at_freq(gcmd, config, st_process: ShakeTuneProcess) -> None:
     if input_shaper is not None:
         input_shaper.enable_shaping()
 
-    # If the user wanted to create a graph, we stop the recording and generate it
+    # If the user wanted to create a graph, we stop the recording and save data as CSVs
     if create_graph:
         accelerometer.stop_recording()
         toolhead.dwell(0.5)
-
-        creator.configure(freq, duration, accel_per_hz)
-        creator.define_output_target(filename)
-        measurements_manager.save_stdata()
-        st_process.run(filename)
-        st_process.wait_for_completion()
+        ConsoleOutput.print('Saving raw measurements to CSV files for off-device processing...')
+        saved = measurements_manager.save_csvs()
+        for p in saved:
+            ConsoleOutput.print(f'- {p}')

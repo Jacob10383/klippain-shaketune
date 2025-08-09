@@ -20,7 +20,6 @@ from .commands import (
     create_vibrations_profile,
     excitate_axis_at_freq,
 )
-from .graph_creators import GraphCreatorFactory
 from .helpers.console_output import ConsoleOutput
 from .shaketune_config import ShakeTuneConfig
 from .shaketune_process import ShakeTuneProcess
@@ -157,13 +156,8 @@ class ShakeTune:
 
     def _cmd_helper(self, gcmd, graph_type: str, cmd_function: Callable) -> None:
         ConsoleOutput.print(f'Shake&Tune version: {ShakeTuneConfig.get_git_version()}')
-        gcreator = GraphCreatorFactory.create_graph_creator(graph_type, self._st_config)
-        st_process = ShakeTuneProcess(
-            self._st_config,
-            self._printer.get_reactor(),
-            gcreator,
-            self.timeout,
-        )
+        # Export-only mode: do not import or instantiate graph creators on constrained systems
+        st_process = ShakeTuneProcess(self._st_config, self._printer.get_reactor(), graph_creator=None, timeout=self.timeout)
         cmd_function(gcmd, self._config, st_process)
 
     def cmd_EXCITATE_AXIS_AT_FREQ(self, gcmd) -> None:

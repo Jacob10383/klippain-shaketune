@@ -72,9 +72,12 @@ def axes_map_calibration(gcmd, config, st_process: ShakeTuneProcess) -> None:
     toolhead.move([mid_x - SEGMENT_LENGTH / 2, mid_y - SEGMENT_LENGTH / 2, z_height, E], feedrate_travel)
     toolhead.dwell(0.5)
 
-    creator = st_process.get_graph_creator()
-    filename = creator.get_folder() / f'{creator.get_type().replace(" ", "")}_{date}'
-    measurements_manager = MeasurementsManager(st_process.get_st_config().chunk_size, printer.get_reactor(), filename)
+    # Prepare export-only CSV output path (no heavy processing on this device)
+    output_folder = st_process.get_st_config().get_results_folder('axes map')
+    filename = output_folder / f'axesmap_{date}'
+    measurements_manager = MeasurementsManager(
+        st_process.get_st_config().chunk_size, printer.get_reactor(), filename, mode='csv'
+    )
 
     # Start the measurements and do the movements (+X, +Y and then +Z)
     accelerometer.start_recording(measurements_manager, name='axesmap_X', append_time=True)
@@ -110,11 +113,8 @@ def axes_map_calibration(gcmd, config, st_process: ShakeTuneProcess) -> None:
 
     toolhead.wait_moves()
 
-    # Run post-processing
-    ConsoleOutput.print('Analysis of the movements...')
-    ConsoleOutput.print('This may take some time (1-3min)')
-    creator.configure(accel, SEGMENT_LENGTH)
-    creator.define_output_target(filename)
-    measurements_manager.save_stdata()
-    st_process.run(filename)
-    st_process.wait_for_completion()
+    # Save raw data as CSV files for off-device processing
+    ConsoleOutput.print('Saving raw measurements to CSV files for off-device processing...')
+    saved = measurements_manager.save_csvs()
+    for p in saved:
+        ConsoleOutput.print(f'- {p}')

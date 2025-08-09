@@ -11,7 +11,7 @@
 from datetime import datetime
 
 from ..helpers.accelerometer import Accelerometer, MeasurementsManager
-from ..helpers.common_func import AXIS_CONFIG
+from ..helpers.constants import AXIS_CONFIG
 from ..helpers.compat import res_tester_config
 from ..helpers.console_output import ConsoleOutput
 from ..helpers.motors_config_parser import MotorsConfigParser
@@ -103,9 +103,12 @@ def compare_belts_responses(gcmd, config, st_process: ShakeTuneProcess) -> None:
     else:
         input_shaper = None
 
-    creator = st_process.get_graph_creator()
-    filename = creator.get_folder() / f'{creator.get_type().replace(" ", "")}_{date}'
-    measurements_manager = MeasurementsManager(st_process.get_st_config().chunk_size, printer.get_reactor(), filename)
+    # Export-only CSV output path
+    output_folder = st_process.get_st_config().get_results_folder('belts comparison')
+    filename = output_folder / f'belts_{date}'
+    measurements_manager = MeasurementsManager(
+        st_process.get_st_config().chunk_size, printer.get_reactor(), filename, mode='csv'
+    )
 
     # Run the test for each axis
     for config in filtered_config:
@@ -132,11 +135,8 @@ def compare_belts_responses(gcmd, config, st_process: ShakeTuneProcess) -> None:
     else:  # minimum_cruise_ratio not found: Klipper < v0.12.0-239
         gcode.run_script_from_command(f'SET_VELOCITY_LIMIT ACCEL={old_accel}')
 
-    # Run post-processing
-    ConsoleOutput.print('Belts comparative frequency profile generation...')
-    ConsoleOutput.print('This may take some time (1-3min)')
-    creator.configure(motors_config_parser.kinematics, test_params, max_scale)
-    creator.define_output_target(filename)
-    measurements_manager.save_stdata()
-    st_process.run(filename)
-    st_process.wait_for_completion()
+    # Save raw data as CSV files for off-device processing
+    ConsoleOutput.print('Saving raw measurements to CSV files for off-device processing...')
+    saved = measurements_manager.save_csvs()
+    for p in saved:
+        ConsoleOutput.print(f'- {p}')

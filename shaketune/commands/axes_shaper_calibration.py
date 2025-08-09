@@ -11,7 +11,7 @@
 from datetime import datetime
 
 from ..helpers.accelerometer import Accelerometer, MeasurementsManager
-from ..helpers.common_func import AXIS_CONFIG
+from ..helpers.constants import AXIS_CONFIG
 from ..helpers.compat import res_tester_config
 from ..helpers.console_output import ConsoleOutput
 from ..helpers.resonance_test import vibrate_axis
@@ -90,16 +90,17 @@ def axes_shaper_calibration(gcmd, config, st_process: ShakeTuneProcess) -> None:
     else:
         input_shaper = None
 
-    creator = st_process.get_graph_creator()
+    # Export-only CSV output path
+    output_folder = st_process.get_st_config().get_results_folder('input shaper')
 
     # Filter axis configurations based on user input, assuming 'axis_input' can be 'x', 'y', 'all' (that means 'x' and 'y')
     filtered_config = [
         a for a in AXIS_CONFIG if a['axis'] == axis_input or (axis_input == 'all' and a['axis'] in ('x', 'y'))
     ]
     for config in filtered_config:
-        filename = creator.get_folder() / f'{creator.get_type().replace(" ", "")}_{date}_{config["label"]}'
+        filename = output_folder / f'inputshaper_{date}_{config["label"]}'
         measurements_manager = MeasurementsManager(
-            st_process.get_st_config().chunk_size, printer.get_reactor(), filename
+            st_process.get_st_config().chunk_size, printer.get_reactor(), filename, mode='csv'
         )
 
         toolhead.manual_move(point, feedrate_travel)
@@ -122,14 +123,11 @@ def axes_shaper_calibration(gcmd, config, st_process: ShakeTuneProcess) -> None:
         toolhead.dwell(0.5)
         toolhead.wait_moves()
 
-        # And finally generate the graph for each measured axis
-        ConsoleOutput.print(f'{config["axis"].upper()} axis frequency profile generation...')
-        ConsoleOutput.print('This may take some time (1-3min)')
-        creator.configure(scv, max_sm, test_params, max_scale)
-        creator.define_output_target(filename)
-        measurements_manager.save_stdata()
-        st_process.run(filename)
-        st_process.wait_for_completion()
+        # Save raw data as CSV files for off-device processing
+        ConsoleOutput.print('Saving raw measurements to CSV files for off-device processing...')
+        saved = measurements_manager.save_csvs()
+        for p in saved:
+            ConsoleOutput.print(f'- {p}')
         toolhead.dwell(1)
 
     # Re-enable the input shaper if it was active

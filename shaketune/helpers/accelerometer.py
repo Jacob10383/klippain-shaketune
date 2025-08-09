@@ -11,16 +11,14 @@
 #              compressed format (.stdata) or from the legacy Klipper CSV files.
 
 
+import csv
 import json
 import time
 import uuid
 from io import TextIOWrapper
 from multiprocessing import Process, Queue, Value
 from pathlib import Path
-from typing import List, Optional, Tuple, TypedDict
-
-import numpy as np
-from zstandard import FLUSH_FRAME, ZstdCompressor, ZstdDecompressor
+from typing import Any, List, Optional, Tuple, TypedDict
 
 from ..helpers.console_output import ConsoleOutput
 
@@ -39,32 +37,37 @@ class Measurement(TypedDict):
 
 
 class MeasurementsManager:
-    def __init__(self, chunk_size: int, k_reactor=None, stdata_filename: Path = None):
+    def __init__(self, chunk_size: int, k_reactor=None, stdata_filename: Path = None, mode: str = 'csv'):
         # Klipper reactor is optional here as when running in CLI mode, we don't need it since in this mode
         # we are only reading a file to create graphs and never recording anything (so no disk writes)
         self._k_reactor = k_reactor
         self._chunk_size = chunk_size
         self._final_file = None
         self._temp_file = None
+        self._mode = mode  # 'csv' (lightweight) or 'stdata' (compressed)
 
         # Get the stdata filename and associated temporary file (with the correct extension)
         if stdata_filename is not None:
             self._final_file = stdata_filename
-            if self._final_file.suffix != '.stdata':
-                self._final_file = self._final_file.with_suffix('.stdata')
-            self._temp_file = self._final_file.parent / f'snt_tmp-{str(uuid.uuid4())[:8]}.stdata'
+            if self._mode == 'stdata':
+                if self._final_file.suffix != '.stdata':
+                    self._final_file = self._final_file.with_suffix('.stdata')
+                self._temp_file = self._final_file.parent / f'snt_tmp-{str(uuid.uuid4())[:8]}.stdata'
 
         self.measurements: List[Measurement] = []
 
-        # Create a dedicated process with a Queue to manage all the writing operations
-        self._writer_queue = Queue()
-        self._is_writing = Value('b', False)
+        # Create a dedicated process with a Queue to manage all the writing operations (only for stdata mode)
+        self._writer_queue = Queue() if self._mode == 'stdata' else None
+        self._is_writing = Value('b', False) if self._mode == 'stdata' else None
         self._writer_process: Optional[Process] = None
 
     # Dedicated writer process: opens the output file in binary write mode and wraps it with a Zstandard compressor
     # stream. It then continuously reads measurement objects from the queue and writes each as a JSON line
-    def _writer_loop(self, output_file: Path, write_queue: Queue, is_writing: Value):
+    def _writer_loop(self, output_file: Path, write_queue: Any, is_writing: Any):
+        # Only used for stdata mode; zstandard is imported lazily here to avoid importing on constrained systems
         try:
+            from zstandard import FLUSH_FRAME, ZstdCompressor  # type: ignore
+
             with open(output_file, 'wb') as f:
                 cctx = ZstdCompressor(level=COMPRESSION_LEVEL)
                 with cctx.stream_writer(f) as compressor:
@@ -92,21 +95,22 @@ class MeasurementsManager:
             raise ValueError('no measurements available to append samples to!') from err
 
     def add_measurement(self, name: str, samples: SamplesList = None, timeout: float = WRITE_TIMEOUT):
-        if not self._temp_file:
-            raise ValueError('no file path provided to the MeasurementsManager! Unable to add any measurement.')
+        if self._mode == 'stdata':
+            if not self._temp_file:
+                raise ValueError('no file path provided to the MeasurementsManager! Unable to add any measurement.')
 
-        # Start the writer process if it's not already running
-        if self._writer_process is None:
-            self._writer_process = Process(
-                target=self._writer_loop,
-                args=(self._temp_file, self._writer_queue, self._is_writing),
-                daemon=False,
-            )
-            self._writer_process.start()
+            # Start the writer process if it's not already running
+            if self._writer_process is None:
+                self._writer_process = Process(
+                    target=self._writer_loop,
+                    args=(self._temp_file, self._writer_queue, self._is_writing),
+                    daemon=False,
+                )
+                self._writer_process.start()
 
         samples = samples if samples is not None else []
         self.measurements.append({'name': name, 'samples': samples})
-        if len(self.measurements) > self._chunk_size:
+        if self._mode == 'stdata' and len(self.measurements) > self._chunk_size:
             self._flush_chunk()  # Flush the current chunk of measurements to disk
 
             # Force wait for the writer process to finish writing in order to avoid being able
@@ -132,6 +136,8 @@ class MeasurementsManager:
     # Flush all measurements except the last one (which can still receive appended samples) to the dedicated
     # writer process. Each measurement is sent as a single JSON-serializable object via the Queue
     def _flush_chunk(self):
+        if self._mode != 'stdata':
+            return
         if len(self.measurements) <= 1:
             return
         flush_list = self.measurements[:-1]
@@ -140,6 +146,8 @@ class MeasurementsManager:
         self.clear_measurements(keep_last=True)
 
     def save_stdata(self, timeout: int = WRITE_TIMEOUT):
+        if self._mode != 'stdata':
+            raise ValueError('MeasurementsManager not configured for stdata mode')
         # Klipper reactor is required to save the data to disk (but optional for the CLI mode that never saves any .stdata)
         if not self._k_reactor:
             raise ValueError('no Klipper reactor provided! Unable to save data to disk.')
@@ -179,6 +187,24 @@ class MeasurementsManager:
         except Exception as e:
             ConsoleOutput.print(f'Shake&Tune was unable to create the final data file ({self._final_file}): {e}')
 
+    def save_csvs(self) -> List[Path]:
+        # Save each measurement to an individual CSV file alongside the provided base filename
+        if self._final_file is None:
+            raise ValueError('no base file path provided to the MeasurementsManager! Unable to save CSV files.')
+        base = self._final_file
+        base.parent.mkdir(parents=True, exist_ok=True)
+        saved_files: List[Path] = []
+        for meas in self.measurements:
+            safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in meas['name'])
+            out_path = base.parent / f"{base.stem}_{safe_name}.csv"
+            with open(out_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['#time', 'accel_x', 'accel_y', 'accel_z'])
+                for t, ax, ay, az in meas['samples']:
+                    writer.writerow([t, ax, ay, az])
+            saved_files.append(out_path)
+        return saved_files
+
     # Return all the measurements from memory. Measurements flushed to disk are available via load_from_stdata()
     def get_measurements(self) -> List[Measurement]:
         return self.measurements
@@ -187,6 +213,9 @@ class MeasurementsManager:
     def load_from_stdata(self, filename: Path) -> List[Measurement]:
         measurements = []
         try:
+            # Lazy import of zstandard to avoid importing on constrained systems
+            from zstandard import ZstdDecompressor  # type: ignore
+
             with open(filename, 'rb') as f:
                 dctx = ZstdDecompressor()
                 with dctx.stream_reader(f) as decompressor:
@@ -229,6 +258,15 @@ class MeasurementsManager:
                         )
                         continue
                     # If we have the correct raw data header, proceed to load the data
+                    # Lazy import numpy only when running on a capable system (e.g., CLI machine)
+                    try:
+                        import numpy as np  # type: ignore
+                    except Exception as e:
+                        ConsoleOutput.print(
+                            'Error: numpy is required to load CSV files on this system but is not available.'
+                        )
+                        raise e
+
                     data = np.loadtxt(logname, comments='#', delimiter=',', skiprows=1)
                     if data.ndim == 1 or data.shape[1] != 4:
                         ConsoleOutput.print(
@@ -248,7 +286,7 @@ class MeasurementsManager:
 
     def __del__(self):
         try:
-            if self._temp_file.exists():
+            if self._temp_file and self._temp_file.exists():
                 self._temp_file.unlink()
         except Exception:
             pass  # Ignore errors during cleanup
