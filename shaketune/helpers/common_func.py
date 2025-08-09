@@ -14,10 +14,6 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
-# Import stub dependencies first
-from .stub_dependencies import replace_imports
-replace_imports()
-
 import numpy as np
 from scipy.signal import spectrogram
 

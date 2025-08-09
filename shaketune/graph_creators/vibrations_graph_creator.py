@@ -13,10 +13,6 @@ import os
 import re
 from typing import List, Optional, Tuple
 
-# Import stub dependencies first
-from ..helpers.stub_dependencies import replace_imports
-replace_imports()
-
 import numpy as np
 
 from ..helpers.accelerometer import Measurement, MeasurementsManager
@@ -56,9 +52,17 @@ class VibrationsGraphCreator(GraphCreator):
             self._motors = None
 
     def create_graph(self, measurements_manager: MeasurementsManager) -> None:
-        # Skip graph generation in data collection only mode
-        self._skip_graph_generation = True
-        return
+        computer = VibrationGraphComputation(
+            measurements=measurements_manager.get_measurements(),
+            kinematics=self._kinematics,
+            accel=self._accel,
+            max_freq=self._config.max_freq_vibrations,
+            st_version=self._version,
+            motors=self._motors,
+        )
+        computation = computer.compute()
+        fig = self._plotter.plot_vibrations_graph(computation)
+        self._save_figure(fig)
 
 
 class VibrationGraphComputation:

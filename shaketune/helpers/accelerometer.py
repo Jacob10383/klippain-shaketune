@@ -19,10 +19,6 @@ from multiprocessing import Process, Queue, Value
 from pathlib import Path
 from typing import List, Optional, Tuple, TypedDict
 
-# Import stub dependencies first
-from .stub_dependencies import replace_imports
-replace_imports()
-
 import numpy as np
 from zstandard import FLUSH_FRAME, ZstdCompressor, ZstdDecompressor
 

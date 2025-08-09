@@ -6,10 +6,6 @@
 # File: __init__.py
 # Description: Imports various graph creator classes for the Shake&Tune package.
 
-# Import stub dependencies first to avoid import issues
-from ..helpers.stub_dependencies import replace_imports
-replace_imports()
-
 import os
 import sys
 
