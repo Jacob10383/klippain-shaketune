@@ -15,7 +15,11 @@ from datetime import datetime
 from ..helpers.accelerometer import Accelerometer, MeasurementsManager
 from ..helpers.console_output import ConsoleOutput
 from ..helpers.motors_config_parser import MotorsConfigParser
+from ..helpers.stub_dependencies import replace_imports
 from ..shaketune_process import ShakeTuneProcess
+
+# Replace problematic imports with stubs
+replace_imports()
 
 MIN_SPEED = 2  # mm/s
 
@@ -153,11 +157,8 @@ def create_vibrations_profile(gcmd, config, st_process: ShakeTuneProcess) -> Non
         gcode.run_script_from_command(f'SET_VELOCITY_LIMIT ACCEL={old_accel} SQUARE_CORNER_VELOCITY={old_sqv}')
     toolhead.wait_moves()
 
-    # Run post-processing
-    ConsoleOutput.print('Machine vibrations profile generation...')
-    ConsoleOutput.print('This may take some time (5-8min)')
-    creator.configure(motors_config_parser.kinematics, accel, motors_config_parser)
-    creator.define_output_target(filename)
+    # Save the data without generating graphs
+    ConsoleOutput.print('Saving vibrations profile data...')
     measurements_manager.save_stdata()
-    st_process.run(filename)
-    st_process.wait_for_completion()
+    ConsoleOutput.print(f'Vibrations profile data saved to: {filename}')
+    ConsoleOutput.print('Graph generation skipped - data collection only mode')

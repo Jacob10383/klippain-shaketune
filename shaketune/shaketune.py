@@ -13,6 +13,10 @@ import os
 from pathlib import Path
 from typing import Callable
 
+# Import stub dependencies first
+from .helpers.stub_dependencies import replace_imports
+replace_imports()
+
 from .commands import (
     axes_map_calibration,
     axes_shaper_calibration,

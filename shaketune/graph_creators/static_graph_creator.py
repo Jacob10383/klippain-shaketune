@@ -10,6 +10,10 @@
 
 from typing import List, Optional
 
+# Import stub dependencies first
+from ..helpers.stub_dependencies import replace_imports
+replace_imports()
+
 import numpy as np
 
 from ..helpers.accelerometer import Measurement, MeasurementsManager

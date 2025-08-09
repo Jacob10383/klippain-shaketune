@@ -4,6 +4,10 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+# Import stub dependencies first
+from .helpers.stub_dependencies import replace_imports
+replace_imports()
+
 from .graph_creators.graph_creator_factory import GraphCreatorFactory
 from .helpers.accelerometer import MeasurementsManager
 from .shaketune_config import ShakeTuneConfig

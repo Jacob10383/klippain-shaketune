@@ -11,6 +11,9 @@
 #                 and compare the frequency profiles of individual belts.
 #              4. ...
 
+# Import stub dependencies first to avoid import issues
+from .helpers.stub_dependencies import replace_imports
+replace_imports()
 
 from .shaketune import ShakeTune as ShakeTune
 

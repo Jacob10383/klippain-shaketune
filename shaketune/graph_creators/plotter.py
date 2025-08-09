@@ -11,6 +11,10 @@
 import os
 from datetime import datetime
 
+# Import stub dependencies first
+from ..helpers.stub_dependencies import replace_imports
+replace_imports()
+
 import matplotlib
 import matplotlib.font_manager
 import matplotlib.pyplot as plt

@@ -13,6 +13,10 @@
 import abc
 from pathlib import Path
 
+# Import stub dependencies first
+from ..helpers.stub_dependencies import replace_imports
+replace_imports()
+
 from matplotlib.figure import Figure
 
 from ..helpers.accelerometer import MeasurementsManager
@@ -45,6 +49,10 @@ class GraphCreator(abc.ABC):
             raise ValueError(
                 'Output target not defined. Please call define_output_target() before trying to save the figure!'
             )
+
+        # Skip saving figures in data collection only mode
+        if hasattr(self, '_skip_graph_generation') and self._skip_graph_generation:
+            return
 
         fig.savefig(f'{self._output_target.with_suffix(".png")}', dpi=self._config.dpi)
         if not self._config.keep_raw_data:

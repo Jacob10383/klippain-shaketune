@@ -9,6 +9,10 @@
 
 from typing import List, Optional, Tuple
 
+# Import stub dependencies first
+from ..helpers.stub_dependencies import replace_imports
+replace_imports()
+
 import numpy as np
 import pywt
 from scipy import stats

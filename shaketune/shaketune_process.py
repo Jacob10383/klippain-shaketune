@@ -15,6 +15,10 @@ from multiprocessing import Process
 from pathlib import Path
 from typing import List, Optional, Union
 
+# Import stub dependencies first
+from .helpers.stub_dependencies import replace_imports
+replace_imports()
+
 from .helpers.accelerometer import MeasurementsManager
 from .helpers.console_output import ConsoleOutput
 from .shaketune_config import ShakeTuneConfig
@@ -119,22 +123,6 @@ class ShakeTuneProcess:
             ConsoleOutput.print('Error: no measurements available to create the graphs!')
             return
 
-        # Generate the graphs
-        try:
-            graph_creator.create_graph(m_manager)
-        except FileNotFoundError as e:
-            ConsoleOutput.print(f'FileNotFound error: {e}')
-            return
-        except TimeoutError as e:
-            ConsoleOutput.print(f'Timeout error: {e}')
-            return
-        except Exception as e:
-            ConsoleOutput.print(f'Error while generating the graphs: {e}\n{traceback.print_exc()}')
-            return
-
-        graph_creator.clean_old_files(self._config.keep_n_results)
-
-        ConsoleOutput.print(f'{graph_creator.get_type()} graphs created successfully!')
-        ConsoleOutput.print(
-            f'Cleaned up the output folder (only the last {self._config.keep_n_results} results were kept)!'
-        )
+        # Skip graph generation in data collection only mode
+        ConsoleOutput.print('Graph generation skipped - data collection only mode')
+        return
