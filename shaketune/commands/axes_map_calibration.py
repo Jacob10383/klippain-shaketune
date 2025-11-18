@@ -49,11 +49,19 @@ def axes_map_calibration(gcmd, config, st_process: ShakeTuneProcess) -> None:
     # set the wanted acceleration values
     if 'minimum_cruise_ratio' in toolhead_info:
         old_mcr = toolhead_info['minimum_cruise_ratio']  # minimum_cruise_ratio found: Klipper >= v0.12.0-239
+        old_atd = None
         gcode.run_script_from_command(
             f'SET_VELOCITY_LIMIT ACCEL={accel} MINIMUM_CRUISE_RATIO=0 SQUARE_CORNER_VELOCITY=5.0'
         )
-    else:  # minimum_cruise_ratio not found: Klipper < v0.12.0-239
+    elif 'max_accel_to_decel' in toolhead_info:  # max_accel_to_decel found: older Klipper versions
         old_mcr = None
+        old_atd = toolhead_info['max_accel_to_decel']
+        gcode.run_script_from_command(
+            f'SET_VELOCITY_LIMIT ACCEL={accel} ACCEL_TO_DECEL={accel} SQUARE_CORNER_VELOCITY=5.0'
+        )
+    else:  # neither found: very old Klipper version
+        old_mcr = None
+        old_atd = None
         gcode.run_script_from_command(f'SET_VELOCITY_LIMIT ACCEL={accel} SQUARE_CORNER_VELOCITY=5.0')
 
     # Deactivate input shaper if it is active to get raw movements
@@ -105,7 +113,11 @@ def axes_map_calibration(gcmd, config, st_process: ShakeTuneProcess) -> None:
         gcode.run_script_from_command(
             f'SET_VELOCITY_LIMIT ACCEL={old_accel} MINIMUM_CRUISE_RATIO={old_mcr} SQUARE_CORNER_VELOCITY={old_sqv}'
         )
-    else:  # minimum_cruise_ratio not found: Klipper < v0.12.0-239
+    elif old_atd is not None:  # max_accel_to_decel found: older Klipper versions
+        gcode.run_script_from_command(
+            f'SET_VELOCITY_LIMIT ACCEL={old_accel} ACCEL_TO_DECEL={old_atd} SQUARE_CORNER_VELOCITY={old_sqv}'
+        )
+    else:  # neither found: very old Klipper version
         gcode.run_script_from_command(f'SET_VELOCITY_LIMIT ACCEL={old_accel} SQUARE_CORNER_VELOCITY={old_sqv}')
 
     toolhead.wait_moves()
